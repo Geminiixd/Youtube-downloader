@@ -30,27 +30,52 @@ jobs:
         with:
           persist-credentials: true
       
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
-      - name: Install yt-dlp
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-pip
-          pip3 install yt-dlp
+          sudo apt-get install -y python3-pip curl
+          pip3 install -U yt-dlp
+          
+      - name: Install Node.js (for yt-dlp JS runtime)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
       
       - name: Create videos directory
         run: mkdir -p videos
       
       - name: Download video
+        env:
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
         run: |
           cd videos
-          if [ "${{ inputs.quality }}" = "highest" ]; then
-            yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" "${{ inputs.video_url }}"
+          
+          # Create cookies file if secret exists
+          if [ ! -z "$YOUTUBE_COOKIES" ]; then
+            echo "$YOUTUBE_COOKIES" > cookies.txt
+            COOKIE_FLAG="--cookies cookies.txt"
           else
-            yt-dlp -f "bestvideo[height<=${{ inputs.quality }}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${{ inputs.quality }}][ext=mp4]/best" "${{ inputs.video_url }}"
+            COOKIE_FLAG=""
           fi
+          
+          # Download with Node.js runtime and cookies
+          if [ "${{ inputs.quality }}" = "highest" ]; then
+            yt-dlp --extractor-args "youtube:player_client=android" \
+                   $COOKIE_FLAG \
+                   -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
+                   --merge-output-format mp4 \
+                   "${{ inputs.video_url }}"
+          else
+            QUALITY_NUM=$(echo "${{ inputs.quality }}" | sed 's/p//')
+            yt-dlp --extractor-args "youtube:player_client=android" \
+                   $COOKIE_FLAG \
+                   -f "bestvideo[height<=$QUALITY_NUM][ext=mp4]+bestaudio[ext=m4a]/best[height<=$QUALITY_NUM][ext=mp4]/best" \
+                   --merge-output-format mp4 \
+                   "${{ inputs.video_url }}"
+          fi
+          
+          # Clean up cookies
+          rm -f cookies.txt
       
       - name: Commit and push
         run: |
