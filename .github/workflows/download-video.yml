@@ -1,0 +1,60 @@
+name: Download YouTube Video
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'YouTube Video URL'
+        required: true
+        type: string
+      quality:
+        description: 'Video Quality'
+        required: true
+        type: choice
+        options:
+          - highest
+          - 720p
+          - 480p
+          - 360p
+        default: '720p'
+
+permissions:
+  contents: write
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install yt-dlp
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip
+          pip3 install yt-dlp
+      
+      - name: Create videos directory
+        run: mkdir -p videos
+      
+      - name: Download video
+        run: |
+          cd videos
+          if [ "${{ inputs.quality }}" = "highest" ]; then
+            yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" "${{ inputs.video_url }}"
+          else
+            yt-dlp -f "bestvideo[height<=${{ inputs.quality }}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${{ inputs.quality }}][ext=mp4]/best" "${{ inputs.video_url }}"
+          fi
+      
+      - name: Commit and push
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git add videos/
+          git diff --staged --quiet || (git commit -m "Add downloaded video: ${{ inputs.video_url }}" && git push)
